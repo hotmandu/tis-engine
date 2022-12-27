@@ -10,13 +10,14 @@ pub trait Transaction : Sized
 
     fn apply(&self, state: Self::State) -> Self::State;
 
-    /// Performs collision check with other transaction.
-    /// True = 충돌 안남
-    /// False = 충돌 남
+    /// Performs collision check with other transaction.  
+    /// - `True` = 충돌 안남
+    /// - `False` = 충돌 남
     /// 
     /// # Soundness
-    /// A.collision_check(B) == B.collision_check(A) 는 항상 성립해야 한다.
-    /// 추가로, (A, B)가 충돌하지 않으면, 임의의 Transactions [A, B, ...]에 대해서
+    /// `A.is_collision_safe_with(B) == B.is_collision_safe_with(A)` 는 항상 성립해야 한다.
+    /// 
+    /// 추가로, (A, B)가 충돌하지 않으면, 임의의 Transactions \[A, B, ...\]에 대해서
     /// 항상 그 apply 결과가 어떤 초기 state든지, apply 순서든지 상관 없이 일관성이 있어야 한다.
     fn is_collision_safe_with(&self, other: &Self) -> bool;
 }
