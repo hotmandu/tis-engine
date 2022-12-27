@@ -4,53 +4,39 @@ use super::util::{PhantomUnsend, PhantomUnsync};
 
 type UID = usize;
 
-pub trait Transaction
+pub trait Transaction : Sized
 {
     type State;
-    type Aux;
 
     fn apply(&self, state: Self::State) -> Self::State;
-    fn aux(&self) -> Self::Aux;
 
     /// Performs collision check with other transaction.
+    /// True = 충돌 안남
+    /// False = 충돌 남
     /// 
     /// # Soundness
     /// A.collision_check(B) == B.collision_check(A) 는 항상 성립해야 한다.
     /// 추가로, (A, B)가 충돌하지 않으면, 임의의 Transactions [A, B, ...]에 대해서
     /// 항상 그 apply 결과가 어떤 초기 state든지, apply 순서든지 상관 없이 일관성이 있어야 한다.
-    fn collision_check(&self, other: &Self) -> bool;
+    fn is_collision_safe_with(&self, other: &Self) -> bool;
 }
 
-pub trait Reducer<State, Input, Tx>
-where
-    Tx: Transaction + Sized
+pub trait Reducer<State, Input, Tx: Transaction>
 {
-    fn develop(state: State, input: Input) -> Option<Tx>;
+    fn develop(state: &State, input: &Input) -> Option<Tx>;
 }
 
-pub struct SignedTx<Tx>
-where
-    Tx: Transaction + Sized
-{
-    tx: Tx,
-    reducer_id: UID,
-}
-
-struct Event<Input, Tx>
-where
-    Tx: Transaction + Sized
+struct Event<Input, Tx: Transaction>
 {
     input: Input,
-    transactions: Vec<SignedTx<Tx>>,
+    transactions: Vec<(UID, Tx)>,
 }
 
-pub enum EngineResult<State, Tx>
-where
-    Tx: Transaction + Sized
+pub enum EngineResult<'a, State, Tx: Transaction>
 {
-    Ok(State),
-    TransactionConflict(State, Vec<SignedTx<Tx>>),
-    ReducerCrashed(State, Vec<UID>),
+    Ok(&'a State),
+    TransactionConflict(&'a State, &'a Vec<(UID, Tx)>),
+    ReducerCrashed(&'a State, Vec<UID>),
 }
 
 pub struct Engine<State, Input, Tx, R>
@@ -69,7 +55,7 @@ where
 
 impl<State, Input, Tx, R> Engine<State, Input, Tx, R>
 where
-Tx: Transaction,
+    Tx: Transaction,
     R: Reducer<State, Input, Tx>,
 {
     pub fn new(state: State) -> Engine<State, Input, Tx, R> {
@@ -85,18 +71,21 @@ Tx: Transaction,
     }
 
     pub fn add_reducer(&mut self, reducer: R) -> UID {
-        todo!()
+        let i = self.reducers.len();
+        self.reducers.insert(i, reducer);
+        i
     }
 
-    pub fn observe(&self) -> &State {
+    pub fn observe<'a>(&'a self) -> &'a State {
         &self.state
     }
 
-    pub fn step(&mut self, input: Input) -> EngineResult<State, Tx> {
+    pub fn step<'a>(&'a mut self, input: Input) -> EngineResult<'a, State, Tx> {
+        self.time = self.time + 1;
         todo!()
     }
 
-    pub fn get_reducer(index: usize) -> Option<R> {
-        todo!()
+    pub fn get_reducer<'a>(&'a self, index: usize) -> Option<&'a R> {
+        self.reducers.get(index)
     }
 }
