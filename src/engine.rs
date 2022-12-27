@@ -4,10 +4,13 @@ use super::util::{PhantomUnsend, PhantomUnsync};
 
 type UID = usize;
 
-pub trait Transaction<State, Aux>
+pub trait Transaction
 {
-    fn apply(&self, state: State) -> State;
-    fn aux(&self) -> Aux;
+    type State;
+    type Aux;
+
+    fn apply(&self, state: Self::State) -> Self::State;
+    fn aux(&self) -> Self::Aux;
 
     /// Performs collision check with other transaction.
     /// 
@@ -18,50 +21,58 @@ pub trait Transaction<State, Aux>
     fn collision_check(&self, other: &Self) -> bool;
 }
 
-pub trait Reducer<State, Input, Tx, Aux>
+pub trait Reducer<State, Input, Tx>
 where
-    Tx: Transaction<State, Aux> + Sized
+    Tx: Transaction + Sized
 {
     fn develop(state: State, input: Input) -> Option<Tx>;
 }
 
-struct SignedTx<Tx, State, Aux>
+pub struct SignedTx<Tx>
 where
-    Tx: Transaction<State, Aux> + Sized
+    Tx: Transaction + Sized
 {
     tx: Tx,
     reducer_id: UID,
 }
 
-struct Event<Input, Tx, State, Aux> {
+struct Event<Input, Tx>
+where
+    Tx: Transaction + Sized
+{
     input: Input,
-    transactions: Vec<SignedTx<Tx, State, Aux>>,
+    transactions: Vec<SignedTx<Tx>>,
 }
 
-pub enum EngineResult<State, Tx, Aux> {
+pub enum EngineResult<State, Tx>
+where
+    Tx: Transaction + Sized
+{
     Ok(State),
-    TransactionConflict(State, Vec<SignedTx<Tx, State, Aux>>),
+    TransactionConflict(State, Vec<SignedTx<Tx>>),
     ReducerCrashed(State, Vec<UID>),
 }
 
-pub struct Engine<State, Input, Tx, Aux, R>
+pub struct Engine<State, Input, Tx, R>
 where
-    R: Reducer<State, Input, Tx, Aux>,
+    Tx: Transaction,
+    R: Reducer<State, Input, Tx>,
 {
     state: State,
     reducers: Vec<R>,
-    events: Vec<Event<Input, Tx, State, Aux>>,
+    events: Vec<Event<Input, Tx>>,
     time: usize,
 
     _unsend: PhantomUnsend,
     _unsync: PhantomUnsync,
 }
 
-impl<State, Input, Tx, Aux, R> Engine<State, Input, Tx, Aux, R>
+impl<State, Input, Tx, R> Engine<State, Input, Tx, R>
 where
-    R: Reducer<State, Input, Tx, Aux>,
+Tx: Transaction,
+    R: Reducer<State, Input, Tx>,
 {
-    pub fn new(state: State) -> Engine<State, Input, Tx, Aux, R> {
+    pub fn new(state: State) -> Engine<State, Input, Tx, R> {
         Self {
             state,
             reducers: vec![],
@@ -77,11 +88,11 @@ where
         todo!()
     }
 
-    pub fn observe(&self) -> State {
-        self.state
+    pub fn observe(&self) -> &State {
+        &self.state
     }
 
-    pub fn step(&mut self, input: Input) -> EngineResult<State, Tx, Aux> {
+    pub fn step(&mut self, input: Input) -> EngineResult<State, Tx> {
         todo!()
     }
 
