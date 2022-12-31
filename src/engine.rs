@@ -24,7 +24,7 @@ pub trait Transaction : Sized
 
 pub trait Reducer<State, Input, Tx: Transaction>
 {
-    fn develop(state: &State, input: &Input) -> Option<Tx>;
+    fn develop(&self, state: &State, input: &Input) -> Option<Tx>;
 }
 
 struct Event<Input, Tx: Transaction>
@@ -83,6 +83,24 @@ where
 
     pub fn step<'a>(&'a mut self, input: Input) -> EngineResult<'a, State, Tx> {
         self.time = self.time + 1;
+
+        // 1. Calculate Event
+        let mut ev: Event<Input, Tx> = Event { input, transactions: vec![] };
+        // let mut crashed_reducers: Vec<usize> = vec![];
+        
+        let cnt_rdr = self.reducers.len();
+        for i in 0..cnt_rdr {
+            let rdr = self.reducers.get(i).unwrap() as &dyn Reducer<State, Input, Tx>;
+            // TODO: Add try-catch?
+            let opt_tx = rdr.develop(&self.state, &ev.input);
+            if let Some(tx) = opt_tx {
+                ev.transactions.push((i, tx));
+            }
+        }
+
+        // 2. Add it to Log
+
+        // 3. Return result
         todo!()
     }
 

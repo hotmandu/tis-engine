@@ -1,6 +1,6 @@
 use std::{collections::HashSet};
 
-use super::engine;
+use crate::engine;
 
 use fixedbitset::FixedBitSet;
 
