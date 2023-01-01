@@ -7,8 +7,12 @@ type UID = usize;
 pub trait Transaction : Sized
 {
     type State;
+    type ErrorType;
 
-    fn apply(&self, state: Self::State) -> Self::State;
+    /// # About error
+    /// 오류가 나면, Engine.state의 상태 올바름을 보장할 수 없게 된다.
+    /// TODO: 이걸 보장할 수 있게 하는 방법? State: Copy가 되게?
+    fn apply(&self, state: &mut Self::State) -> Result<(), Self::ErrorType>;
 
     /// Performs collision check with other transaction.  
     /// - `True` = 충돌 안남
@@ -33,11 +37,11 @@ struct Event<Input, Tx: Transaction>
     transactions: Vec<(UID, Tx)>,
 }
 
-pub enum EngineResult<'a, State, Tx: Transaction>
+pub enum EngineResult<TxError>
 {
-    Ok(&'a State),
-    TransactionConflict(&'a State, &'a Vec<(UID, Tx)>),
-    ReducerCrashed(&'a State, Vec<UID>),
+    Ok,
+    TransactionConflict(Vec<(usize, usize)>),
+    TransactionCrashed(TxError),
 }
 
 pub struct Engine<State, Input, Tx, R>
@@ -56,10 +60,10 @@ where
 
 impl<State, Input, Tx, R> Engine<State, Input, Tx, R>
 where
-    Tx: Transaction,
+    Tx: Transaction<State = State>,
     R: Reducer<State, Input, Tx>,
 {
-    pub fn new(state: State) -> Engine<State, Input, Tx, R> {
+    pub fn new(state: State) -> Self {
         Self {
             state,
             reducers: vec![],
@@ -81,7 +85,7 @@ where
         &self.state
     }
 
-    pub fn step<'a>(&'a mut self, input: Input) -> EngineResult<'a, State, Tx> {
+    pub fn step<'a>(&'a mut self, input: Input) -> EngineResult<<Tx as Transaction>::ErrorType> {
         self.time = self.time + 1;
 
         // 1. Calculate Event
@@ -98,10 +102,39 @@ where
             }
         }
 
-        // 2. Add it to Log
+        // 1-2. Check collision
+        let cnt_tx = ev.transactions.len();
+        let mut colls: Vec<(usize, usize)> = vec![];
+        for i in 0..cnt_tx {
+            let (_, i_tx) = ev.transactions.get(i).unwrap();
+            for j in 0..i {
+                let (_, j_tx) = ev.transactions.get(j).unwrap();
+                if !i_tx.is_collision_safe_with(j_tx) {
+                    colls.push((i, j));
+                }
+            }
+        }
 
-        // 3. Return result
-        todo!()
+        if colls.len() != 0 {
+            self.events.push(ev);
+            return EngineResult::TransactionConflict(colls);
+        }
+        drop(colls);
+
+        // 2. Calc result
+        let cnt_tx = ev.transactions.len();
+        for i in 0..cnt_tx {
+            let (_, i_tx) = ev.transactions.get(i).unwrap();
+            if let Err(exception) = i_tx.apply(&mut self.state) {
+                self.events.push(ev);
+                return EngineResult::TransactionCrashed(exception);
+            }
+        }
+
+        // 4. Add it to Log
+        self.events.push(ev);
+
+        EngineResult::Ok
     }
 
     pub fn get_reducer<'a>(&'a self, index: usize) -> Option<&'a R> {

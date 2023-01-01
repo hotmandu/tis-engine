@@ -53,12 +53,13 @@ impl BitTx {
 
 impl engine::Transaction for BitTx {
     type State = FixedBitSet;
+    type ErrorType = ();
 
-    fn apply(&self, mut state: Self::State) -> Self::State {
+    fn apply(&self, state: &mut Self::State) -> Result<(), ()> {
         for op in self.ops.iter() {
-            bit_operation::apply(&mut state, op)
+            bit_operation::apply(state, op)
         }
-        state
+        Ok(())
     }
 
     fn is_collision_safe_with(&self, other: &Self) -> bool {
