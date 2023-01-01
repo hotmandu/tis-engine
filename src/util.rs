@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, cell::Cell, sync::MutexGuard};
+use std::{cell::Cell, marker::PhantomData, sync::MutexGuard};
 
 pub type PhantomUnsync = PhantomData<Cell<()>>;
 pub type PhantomUnsend = PhantomData<MutexGuard<'static, ()>>;

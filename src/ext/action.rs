@@ -1,6 +1,6 @@
 use std::{collections::HashSet, hash::Hash};
 
-use crate::engine::{self, Transaction};
+use crate::engine;
 
 #[derive(PartialEq, Eq, Hash)]
 enum AllowDeny<X>
@@ -16,6 +16,7 @@ where
     Action: Eq + Hash + Clone,
 {
     acts: HashSet<AllowDeny<Action>>,
+    last_seen_timestamp: usize,
     state: State,
 }
 
@@ -26,10 +27,11 @@ where
     pub fn new(initial_state: State) -> Self {
         Self {
             acts: HashSet::new(),
+            last_seen_timestamp: 0,
             state: initial_state,
         }
     }
-    
+
     pub fn allowed_actions(&self) -> Vec<Action> {
         let mut allowed: Vec<Action> = vec![];
         for ax in self.acts.iter() {
@@ -41,7 +43,7 @@ where
         }
         allowed
     }
-    
+
     pub fn clear_actions(&mut self) {
         self.acts.clear();
     }
@@ -63,19 +65,22 @@ where
     type State = ActionState<Action, STx::State>;
     type ErrorType = STx::ErrorType;
 
-    fn apply(&self, state: &mut Self::State) -> Result<(), Self::ErrorType> {
+    fn apply(&self, state: &mut Self::State, time: usize) -> Result<(), Self::ErrorType> {
+        if state.last_seen_timestamp != time {
+            // Time advanced. Clear actions
+            state.acts.clear();
+            state.last_seen_timestamp = time;
+        }
         match self {
-            ActionTx::StateTx(stx) => {
-                stx.apply(&mut state.state)
-            },
+            ActionTx::StateTx(stx) => stx.apply(&mut state.state, time),
             ActionTx::ActionAllow(act) => {
                 state.acts.insert(AllowDeny::Allow(act.clone()));
                 Ok(())
-            },
+            }
             ActionTx::ActionDeny(act) => {
                 state.acts.insert(AllowDeny::Deny(act.clone()));
                 Ok(())
-            },
+            }
         }
     }
 
@@ -89,4 +94,13 @@ where
     }
 }
 
-//TODO: 매 step() 전 act 초기화는 어떻게 하지?
+pub trait ActionReducer<State, Action, Input, StateTx>:
+    engine::Reducer<State, Input, ActionTx<Action, StateTx>>
+where
+    Action: Eq + Hash + Clone,
+    StateTx: engine::Transaction,
+{
+}
+
+pub type ActionEngine<State, Action, Input, StateTx, AR> =
+    engine::Engine<State, Input, ActionTx<Action, StateTx>, AR>;

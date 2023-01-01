@@ -2,43 +2,39 @@ use std::marker::PhantomData;
 
 use super::util::{PhantomUnsend, PhantomUnsync};
 
-type UID = usize;
+type Uid = usize;
 
-pub trait Transaction : Sized
-{
+pub trait Transaction: Sized {
     type State;
     type ErrorType;
 
     /// # About error
     /// 오류가 나면, Engine.state의 상태 올바름을 보장할 수 없게 된다.
     /// TODO: 이걸 보장할 수 있게 하는 방법? State: Copy가 되게?
-    fn apply(&self, state: &mut Self::State) -> Result<(), Self::ErrorType>;
+    fn apply(&self, state: &mut Self::State, time: usize) -> Result<(), Self::ErrorType>;
 
     /// Performs collision check with other transaction.  
     /// - `True` = 충돌 안남
     /// - `False` = 충돌 남
-    /// 
+    ///
     /// # Soundness
     /// `A.is_collision_safe_with(B) == B.is_collision_safe_with(A)` 는 항상 성립해야 한다.
-    /// 
+    ///
     /// 추가로, (A, B)가 충돌하지 않으면, 임의의 Transactions \[A, B, ...\]에 대해서
     /// 항상 그 apply 결과가 어떤 초기 state든지, apply 순서든지 상관 없이 일관성이 있어야 한다.
     fn is_collision_safe_with(&self, other: &Self) -> bool;
 }
 
-pub trait Reducer<State, Input, Tx: Transaction>
-{
+pub trait Reducer<State, Input, Tx: Transaction> {
     fn develop(&self, state: &State, input: &Input) -> Option<Tx>;
 }
 
-struct Event<Input, Tx: Transaction>
-{
+struct Event<Input, Tx: Transaction> {
     input: Input,
-    transactions: Vec<(UID, Tx)>,
+    transactions: Vec<(Uid, Tx)>,
 }
 
-pub enum EngineResult<TxError>
-{
+pub enum EngineResult<TxError> {
     Ok,
     TransactionConflict(Vec<(usize, usize)>),
     TransactionCrashed(TxError),
@@ -75,23 +71,26 @@ where
         }
     }
 
-    pub fn add_reducer(&mut self, reducer: R) -> UID {
+    pub fn add_reducer(&mut self, reducer: R) -> Uid {
         let i = self.reducers.len();
         self.reducers.insert(i, reducer);
         i
     }
 
-    pub fn observe<'a>(&'a self) -> &'a State {
+    pub fn observe(&self) -> &State {
         &self.state
     }
 
     pub fn step<'a>(&'a mut self, input: Input) -> EngineResult<<Tx as Transaction>::ErrorType> {
-        self.time = self.time + 1;
+        self.time += 1;
 
         // 1. Calculate Event
-        let mut ev: Event<Input, Tx> = Event { input, transactions: vec![] };
+        let mut ev: Event<Input, Tx> = Event {
+            input,
+            transactions: vec![],
+        };
         // let mut crashed_reducers: Vec<usize> = vec![];
-        
+
         let cnt_rdr = self.reducers.len();
         for i in 0..cnt_rdr {
             let rdr = self.reducers.get(i).unwrap() as &dyn Reducer<State, Input, Tx>;
@@ -115,7 +114,7 @@ where
             }
         }
 
-        if colls.len() != 0 {
+        if !colls.is_empty() {
             self.events.push(ev);
             return EngineResult::TransactionConflict(colls);
         }
@@ -125,7 +124,7 @@ where
         let cnt_tx = ev.transactions.len();
         for i in 0..cnt_tx {
             let (_, i_tx) = ev.transactions.get(i).unwrap();
-            if let Err(exception) = i_tx.apply(&mut self.state) {
+            if let Err(exception) = i_tx.apply(&mut self.state, self.time) {
                 self.events.push(ev);
                 return EngineResult::TransactionCrashed(exception);
             }
@@ -137,7 +136,7 @@ where
         EngineResult::Ok
     }
 
-    pub fn get_reducer<'a>(&'a self, index: usize) -> Option<&'a R> {
+    pub fn get_reducer(&self, index: usize) -> Option<&R> {
         self.reducers.get(index)
     }
 }

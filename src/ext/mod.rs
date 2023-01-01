@@ -1,2 +1,2 @@
-pub mod bit;
 pub mod action;
+pub mod bit;

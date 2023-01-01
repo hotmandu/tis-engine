@@ -1,4 +1,4 @@
-use std::{collections::HashSet};
+use std::collections::HashSet;
 
 use crate::engine;
 
@@ -20,13 +20,19 @@ mod bit_operation {
                 let old_b = target[b];
                 target.set(a, old_b);
                 target.set(b, old_a);
-            },
+            }
         }
     }
 }
 
 pub struct BitTx {
     ops: Vec<Operation>,
+}
+
+impl Default for BitTx {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl BitTx {
@@ -43,8 +49,9 @@ impl BitTx {
         for op in self.ops.iter() {
             match op {
                 Operation::Exchange(a, b) => {
-                    mask.insert(*a); mask.insert(*b);
-                },
+                    mask.insert(*a);
+                    mask.insert(*b);
+                }
             }
         }
         mask
@@ -55,7 +62,7 @@ impl engine::Transaction for BitTx {
     type State = FixedBitSet;
     type ErrorType = ();
 
-    fn apply(&self, state: &mut Self::State) -> Result<(), ()> {
+    fn apply(&self, state: &mut Self::State, _: usize) -> Result<(), ()> {
         for op in self.ops.iter() {
             bit_operation::apply(state, op)
         }
@@ -65,10 +72,10 @@ impl engine::Transaction for BitTx {
     fn is_collision_safe_with(&self, other: &Self) -> bool {
         let this_mask = self.touching_mask();
         let that_mask = other.touching_mask();
-        
+
         this_mask.is_disjoint(&that_mask)
     }
 }
 
-pub trait BitReducer<Input> : engine::Reducer<FixedBitSet, Input, BitTx> {}
+pub trait BitReducer<Input>: engine::Reducer<FixedBitSet, Input, BitTx> {}
 pub type BitEngine<Input, BR> = engine::Engine<FixedBitSet, Input, BitTx, BR>;
